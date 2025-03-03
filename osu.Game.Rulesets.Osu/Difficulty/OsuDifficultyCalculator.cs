@@ -54,7 +54,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty
                 var aimWithoutSliders = skills.OfType<TouchAim>().Single(a => !a.IncludeSliders);
                 aimRatingNoSliders = Math.Sqrt(aimWithoutSliders.DifficultyValue()) * difficulty_multiplier;
 
-                var speed = skills.OfType<Speed>().Single();
+                var speed = skills.OfType<TouchSpeed>().Single();
                 speedRating = Math.Sqrt(speed.DifficultyValue()) * difficulty_multiplier;
                 speedNotes = speed.RelevantNoteCount();
                 speedDifficultyStrainCount = speed.CountTopWeightedStrains();
