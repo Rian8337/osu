@@ -35,33 +35,58 @@ namespace osu.Game.Rulesets.Osu.Difficulty
             if (beatmap.HitObjects.Count == 0)
                 return new OsuDifficultyAttributes { Mods = mods };
 
-            var aim = skills.OfType<Aim>().Single(a => a.IncludeSliders);
-            double aimRating = Math.Sqrt(aim.DifficultyValue()) * difficulty_multiplier;
-            double aimDifficultyStrainCount = aim.CountTopWeightedStrains();
-            double difficultSliders = aim.GetDifficultSliders();
+            double aimRating;
+            double aimRatingNoSliders;
+            double aimDifficultyStrainCount;
+            double difficultSliders;
 
-            var aimWithoutSliders = skills.OfType<Aim>().Single(a => !a.IncludeSliders);
-            double aimRatingNoSliders = Math.Sqrt(aimWithoutSliders.DifficultyValue()) * difficulty_multiplier;
-            double sliderFactor = aimRating > 0 ? aimRatingNoSliders / aimRating : 1;
+            double speedRating;
             double speedNotes;
+            double speedDifficultyStrainCount;
 
-            var speed = skills.OfType<Speed>().Single();
-            double speedRating = Math.Sqrt(speed.DifficultyValue()) * difficulty_multiplier;
-            double speedNotes = speed.RelevantNoteCount();
-            double speedDifficultyStrainCount = speed.CountTopWeightedStrains();
+            if (mods.Any(m => m is OsuModTouchDevice))
+            {
+                var aim = skills.OfType<TouchAim>().Single(a => a.IncludeSliders);
+                aimRating = Math.Sqrt(aim.DifficultyValue()) * difficulty_multiplier;
+                aimDifficultyStrainCount = aim.CountTopWeightedStrains();
+                difficultSliders = aim.GetDifficultSliders();
+
+                var aimWithoutSliders = skills.OfType<TouchAim>().Single(a => !a.IncludeSliders);
+                aimRatingNoSliders = Math.Sqrt(aimWithoutSliders.DifficultyValue()) * difficulty_multiplier;
+
+                var speed = skills.OfType<Speed>().Single();
+                speedRating = Math.Sqrt(speed.DifficultyValue()) * difficulty_multiplier;
+                speedNotes = speed.RelevantNoteCount();
+                speedDifficultyStrainCount = speed.CountTopWeightedStrains();
+            }
+            else
+            {
+                var aim = skills.OfType<Aim>().Single(a => a.IncludeSliders);
+                aimRating = Math.Sqrt(aim.DifficultyValue()) * difficulty_multiplier;
+                aimDifficultyStrainCount = aim.CountTopWeightedStrains();
+                difficultSliders = aim.GetDifficultSliders();
+
+                var aimWithoutSliders = skills.OfType<Aim>().Single(a => !a.IncludeSliders);
+                aimRatingNoSliders = Math.Sqrt(aimWithoutSliders.DifficultyValue()) * difficulty_multiplier;
+
+                var speed = skills.OfType<Speed>().Single();
+                speedRating = Math.Sqrt(speed.DifficultyValue()) * difficulty_multiplier;
+                speedNotes = speed.RelevantNoteCount();
+                speedDifficultyStrainCount = speed.CountTopWeightedStrains();
+            }
+
+            double sliderFactor = aimRating > 0 ? aimRatingNoSliders / aimRating : 1;
 
             var flashlight = skills.OfType<Flashlight>().SingleOrDefault();
             double flashlightRating = flashlight == null ? 0.0 : Math.Sqrt(flashlight.DifficultyValue()) * difficulty_multiplier;
 
             if (mods.Any(m => m is OsuModTouchDevice))
             {
-                speedNotes = ((TouchSpeed)skills[2]).RelevantNoteCount();
-                double normalAimRating = Math.Sqrt(skills[3].DifficultyValue()) * difficulty_multiplier;
+                var nonTouchAim = skills.OfType<Aim>().Single();
+                double normalAimRating = Math.Sqrt(nonTouchAim.DifficultyValue()) * difficulty_multiplier;
 
-                flashlightRating *= normalAimRating > 0 ? Math.Pow(aimRating / normalAimRating, 5.0 / 2.0) : 1;
+                flashlightRating *= normalAimRating > 0 ? Math.Pow(aimRating / normalAimRating, 2.5) : 1;
             }
-            else
-                speedNotes = ((Speed)skills[2]).RelevantNoteCount();
 
             if (mods.Any(h => h is OsuModRelax))
             {

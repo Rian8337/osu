@@ -1,6 +1,8 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty.Evaluators;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Osu.Difficulty.Utils;
@@ -12,11 +14,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
     /// </summary>
     public class TouchHandSequenceSpeed : TouchHandSequenceSkill
     {
-        private double skillMultiplier => 1375;
+        private double skillMultiplier => 1.46;
+
         protected override double StrainDecayBase => 0.3;
 
-        public TouchHandSequenceSpeed(double clockRate)
-            : base(clockRate)
+        public TouchHandSequenceSpeed(IReadOnlyList<Mod> mods, double clockRate)
+            : base(mods, clockRate)
         {
         }
 
@@ -46,7 +49,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
             // Treat drags as regular gameplay in terms of tapping.
             bool tappedWithTouch = currentHand != TouchHand.Drag;
 
-            return SpeedEvaluator.EvaluateDifficultyOf(simulated, tappedWithTouch) * singletapMultiplier * bonusMultiplier * skillMultiplier;
+            return SpeedEvaluator.EvaluateDifficultyOf(simulated, Mods, tappedWithTouch) * singletapMultiplier * bonusMultiplier * skillMultiplier;
         }
 
         public override TouchHandSequenceSpeed DeepClone() => new TouchHandSequenceSpeed(this);

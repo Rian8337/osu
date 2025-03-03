@@ -2,7 +2,9 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty.Evaluators;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Osu.Difficulty.Utils;
@@ -18,10 +20,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
     {
         private readonly bool withSliders;
 
-        private double skillMultiplier => 23.55;
+        private double skillMultiplier => 25.6;
 
-        public TouchHandSequenceAim(double clockRate, bool withSliders)
-            : base(clockRate)
+        public TouchHandSequenceAim(IReadOnlyList<Mod> mods, double clockRate, bool withSliders)
+            : base(mods, clockRate)
         {
             this.withSliders = withSliders;
         }

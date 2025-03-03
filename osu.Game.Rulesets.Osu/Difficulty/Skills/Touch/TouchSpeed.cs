@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Mods;
@@ -18,9 +17,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
         private double currentRhythm;
 
         protected override int ReducedSectionCount => 5;
-        protected override double DifficultyMultiplier => 1.04;
-
-        private readonly List<double> objectStrains = new List<double>();
 
         private readonly double clockRate;
 
@@ -41,8 +37,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
 
             double totalStrain = currentStrain * currentRhythm;
 
-            objectStrains.Add(totalStrain);
-
             return totalStrain;
         }
 
@@ -52,21 +46,21 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
 
         protected override TouchHandSequenceSkill[] GetHandSequenceSkills() => new TouchHandSequenceSkill[]
         {
-            new TouchHandSequenceAim(clockRate, true),
-            new TouchHandSequenceSpeed(clockRate),
+            new TouchHandSequenceAim(Mods, clockRate, true),
+            new TouchHandSequenceSpeed(Mods, clockRate),
         };
 
         public double RelevantNoteCount()
         {
-            if (objectStrains.Count == 0)
+            if (ObjectStrains.Count == 0)
                 return 0;
 
-            double maxStrain = objectStrains.Max();
+            double maxStrain = ObjectStrains.Max();
 
             if (maxStrain == 0)
                 return 0;
 
-            return objectStrains.Sum(strain => 1.0 / (1.0 + Math.Exp(-(strain / maxStrain * 12.0 - 6.0))));
+            return ObjectStrains.Sum(strain => 1.0 / (1.0 + Math.Exp(-(strain / maxStrain * 12.0 - 6.0))));
         }
     }
 }

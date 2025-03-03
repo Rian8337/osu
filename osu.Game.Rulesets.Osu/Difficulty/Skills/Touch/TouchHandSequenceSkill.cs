@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Osu.Difficulty.Utils;
 using osu.Game.Rulesets.Osu.Objects;
@@ -34,6 +35,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
 
         public double CurrentStrain { get; private set; }
 
+        /// <summary>
+        /// Mods for use in skill calculations.
+        /// </summary>
+        protected readonly IReadOnlyList<Mod> Mods;
+
         private readonly double clockRate;
 
         private readonly List<OsuHitObject> lastLeftObjects;
@@ -58,8 +64,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
         /// </remarks>
         protected TouchHand LastNonDragHand { get; private set; } = TouchHand.Right;
 
-        protected TouchHandSequenceSkill(double clockRate)
+        protected TouchHandSequenceSkill(IReadOnlyList<Mod> mods, double clockRate)
         {
+            Mods = mods;
             this.clockRate = clockRate;
 
             lastLeftObjects = new List<OsuHitObject>();
@@ -74,6 +81,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
             CurrentStrain = copy.CurrentStrain;
             LastHand = copy.LastHand;
             LastNonDragHand = copy.LastNonDragHand;
+            Mods = copy.Mods;
             clockRate = copy.clockRate;
 
             lastLeftObjects = new List<OsuHitObject>(copy.lastLeftObjects);

@@ -2,25 +2,29 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Osu.Objects;
 
 namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
 {
     public class TouchAim : TouchSkill
     {
+        public readonly bool IncludeSliders;
+        private readonly double clockRate;
+
         private double strainDecayBase => 0.15;
 
-        private readonly double clockRate;
-        private readonly bool withSliders;
-
         private double currentStrain;
+        private readonly List<double> sliderStrains = new List<double>();
 
-        public TouchAim(Mod[] mods, double clockRate, bool withSliders)
+        public TouchAim(Mod[] mods, double clockRate, bool includeSliders)
             : base(mods)
         {
             this.clockRate = clockRate;
-            this.withSliders = withSliders;
+            IncludeSliders = includeSliders;
         }
 
         private double strainDecay(double ms) => Math.Pow(strainDecayBase, ms / 1000);
@@ -31,6 +35,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
         {
             currentStrain = CalculateCurrentStrain(current);
 
+            if (current.BaseObject is Slider)
+                sliderStrains.Add(currentStrain);
+
             return currentStrain;
         }
 
@@ -40,8 +47,20 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
 
         protected override TouchHandSequenceSkill[] GetHandSequenceSkills() => new TouchHandSequenceSkill[]
         {
-            new TouchHandSequenceAim(clockRate, withSliders),
-            new TouchHandSequenceSpeed(clockRate),
+            new TouchHandSequenceAim(Mods, clockRate, IncludeSliders),
+            new TouchHandSequenceSpeed(Mods, clockRate),
         };
+
+        public double GetDifficultSliders()
+        {
+            if (sliderStrains.Count == 0)
+                return 0;
+
+            double maxSliderStrain = sliderStrains.Max();
+            if (maxSliderStrain == 0)
+                return 0;
+
+            return sliderStrains.Sum(strain => 1.0 / (1.0 + Math.Exp(-(strain / maxSliderStrain * 12.0 - 6.0))));
+        }
     }
 }
