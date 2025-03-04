@@ -47,9 +47,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
             foreach (var probability in probabilities)
             {
                 // Compute the probabilities of the object being hit by all possible hand movements.
-                var leftProbability = new TouchHandSequenceProbability(probability);
-                var rightProbability = new TouchHandSequenceProbability(probability);
-                var dragProbability = new TouchHandSequenceProbability(probability);
+                var leftProbability = probability.DeepClone();
+                var rightProbability = probability.DeepClone();
+                var dragProbability = probability.DeepClone();
 
                 leftProbability.Process(osuCurrent, TouchHand.Left);
                 rightProbability.Process(osuCurrent, TouchHand.Right);

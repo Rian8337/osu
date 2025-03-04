@@ -3,6 +3,7 @@
 
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Osu.Difficulty.Utils;
+using osu.Game.Utils;
 
 namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
 {
@@ -10,7 +11,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
     /// Represents the probability of a hand sequence to be taken by the player in Touch Device gameplay
     /// environment to hit <see cref="OsuDifficultyHitObject"/>s that have been processed up to this point.
     /// </summary>
-    public class TouchHandSequenceProbability
+    public class TouchHandSequenceProbability : IDeepCloneable<TouchHandSequenceProbability>
     {
         /// <summary>
         /// The probability that the player performs the hand sequence represented by this <see cref="TouchHandSequenceProbability"/>.
@@ -28,7 +29,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
             Skills = skills;
         }
 
-        public TouchHandSequenceProbability(TouchHandSequenceProbability copy)
+        private TouchHandSequenceProbability(TouchHandSequenceProbability copy)
         {
             Probability = copy.Probability;
             Skills = new TouchHandSequenceSkill[copy.Skills.Length];
@@ -42,5 +43,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
             foreach (var skill in Skills)
                 skill.Process(current, currentHand);
         }
+
+        public TouchHandSequenceProbability DeepClone() => new TouchHandSequenceProbability(this);
     }
 }
