@@ -69,11 +69,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
             Mods = mods;
             this.clockRate = clockRate;
 
-            lastLeftObjects = new List<OsuHitObject>();
-            lastRightObjects = new List<OsuHitObject>();
+            lastLeftObjects = new List<OsuHitObject>(maximum_objects_history);
+            lastRightObjects = new List<OsuHitObject>(maximum_objects_history);
 
-            lastLeftDifficultyObjects = new List<DifficultyHitObject>();
-            lastRightDifficultyObjects = new List<DifficultyHitObject>();
+            lastLeftDifficultyObjects = new List<DifficultyHitObject>(maximum_difficulty_objects_history);
+            lastRightDifficultyObjects = new List<DifficultyHitObject>(maximum_difficulty_objects_history);
         }
 
         protected TouchHandSequenceSkill(TouchHandSequenceSkill copy)
@@ -151,10 +151,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
 
             static void updateObjectHistory<T>(List<T> objects, T obj, int maxLength)
             {
-                objects.Add(obj);
-
-                while (objects.Count > maxLength)
+                while (objects.Count >= maxLength)
                     objects.RemoveAt(0);
+
+                objects.Add(obj);
             }
         }
 
