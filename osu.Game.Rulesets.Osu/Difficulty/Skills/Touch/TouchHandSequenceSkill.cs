@@ -106,7 +106,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
                 return;
             }
 
-            var simulated = currentHand == TouchHand.Drag || LastHand == TouchHand.Drag ? CreateSimulatedObject(osuCurrentObject, LastNonDragHand) : CreateSimulatedObject(osuCurrentObject, currentHand);
+            var simulated = CreateSimulatedObject(osuCurrentObject, currentHand == TouchHand.Drag || LastHand == TouchHand.Drag ? LastNonDragHand : currentHand);
 
             updateStrainValue(current, simulated, currentHand);
             updateHistory(simulated, currentHand);
