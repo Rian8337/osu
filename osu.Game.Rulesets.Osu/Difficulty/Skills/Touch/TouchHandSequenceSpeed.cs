@@ -28,7 +28,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
         {
         }
 
-        protected override double StrainValueIf(OsuDifficultyHitObject simulated, TouchHand currentHand)
+        protected override double StrainValueOf(OsuDifficultyHitObject simulated, TouchHand currentHand)
         {
             double singletapMultiplier = 1.0;
 

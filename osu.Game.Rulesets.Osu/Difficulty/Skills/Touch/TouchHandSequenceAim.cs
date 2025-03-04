@@ -34,7 +34,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
             withSliders = copy.withSliders;
         }
 
-        protected override double StrainValueIf(OsuDifficultyHitObject simulated, TouchHand currentHand)
+        protected override double StrainValueOf(OsuDifficultyHitObject simulated, TouchHand currentHand)
         {
             double bonusMultiplier = 1.0;
 

@@ -133,8 +133,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
         private void updateStrainValue(OsuDifficultyHitObject current, OsuDifficultyHitObject simulated, TouchHand currentHand)
         {
             CurrentStrain *= strainDecay(current.StrainTime);
-
-            CurrentStrain += StrainValueIf(simulated, currentHand);
+            CurrentStrain += StrainValueOf(simulated, currentHand);
         }
 
         private void updateHistory(OsuDifficultyHitObject simulated, TouchHand currentHand)
@@ -237,7 +236,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills.Touch
         /// <param name="simulated">The simulated <see cref="OsuDifficultyHitObject"/>.</param>
         /// <param name="currentHand">The <see cref="TouchHand"/> that hit the <see cref="OsuDifficultyHitObject"/>.</param>
         /// <returns>The strain value of the <see cref="OsuDifficultyHitObject"/>.</returns>
-        protected abstract double StrainValueIf(OsuDifficultyHitObject simulated, TouchHand currentHand);
+        protected abstract double StrainValueOf(OsuDifficultyHitObject simulated, TouchHand currentHand);
 
         public abstract TouchHandSequenceSkill DeepClone();
     }
