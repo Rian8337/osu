@@ -30,23 +30,35 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         {
         }
 
-        private double strainDecay(double ms) => DiffUtils.Pow(0.3, ms / 1000);
+        private static double strainDecay(double ms) => DiffUtils.Pow(0.3, ms / 1000);
 
-        protected override double ProcessInternal(DifficultyHitObject current)
+        /// <summary>
+        /// Computes the next speed strain by applying decay and evaluating the current object's speed difficulty.
+        /// </summary>
+        public static double AdvanceStrainState(double currentStrain, IReadOnlyList<Mod> mods, DifficultyHitObject current)
         {
             const double skill_multiplier = 66.2;
 
+            double decay = strainDecay(((OsuDifficultyHitObject)current).AdjustedDeltaTime);
+
+            return currentStrain * decay + calculateAdjustedDifficulty(current, mods) * (1 - decay) * skill_multiplier;
+        }
+
+        /// <summary>
+        /// Scales the current speed strain by a rhythm multiplier to produce the final strain value.
+        /// </summary>
+        public static double ComputeOverallStrain(double currentStrain, double rhythm) => currentStrain * rhythm;
+
+        protected override double ProcessInternal(DifficultyHitObject current)
+        {
             if (Mods.Any(m => m is OsuModRelax))
                 return 0;
 
-            double decay = strainDecay(((OsuDifficultyHitObject)current).AdjustedDeltaTime);
-
-            currentStrain *= decay;
-            currentStrain += calculateAdjustedDifficulty(current) * (1 - decay) * skill_multiplier;
+            currentStrain = AdvanceStrainState(currentStrain, Mods, current);
 
             double currentRhythm = RhythmEvaluator.EvaluateDifficultyOf(current);
 
-            double totalStrain = currentStrain * currentRhythm;
+            double totalStrain = ComputeOverallStrain(currentStrain, currentRhythm);
 
             if (current.BaseObject is Slider)
                 sliderStrains.Add(totalStrain);
@@ -54,11 +66,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             return totalStrain;
         }
 
-        private double calculateAdjustedDifficulty(DifficultyHitObject current)
+        private static double calculateAdjustedDifficulty(DifficultyHitObject current, IReadOnlyList<Mod> mods)
         {
             double difficulty = SpeedEvaluator.EvaluateDifficultyOf(current);
 
-            if (Mods.Any(m => m is OsuModAutopilot))
+            if (mods.Any(m => m is OsuModAutopilot))
                 difficulty *= 0.5;
 
             return difficulty;

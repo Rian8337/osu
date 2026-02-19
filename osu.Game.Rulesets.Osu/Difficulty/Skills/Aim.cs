@@ -33,7 +33,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         private readonly List<double> sliderStrains = new List<double>();
 
-        private double strainDecay(double ms) => DiffUtils.Pow(0.2, ms / 1000);
+        private static double strainDecay(double ms) => DiffUtils.Pow(0.2, ms / 1000);
+
+        /// <summary>
+        /// Computes the next aim strain by applying strain decay and evaluating the current object's snap, agility, and flow difficulty.
+        /// </summary>
+        public static double AdvanceStrainState(double currentStrain, IReadOnlyList<Mod> mods, DifficultyHitObject current, bool includeSliders)
+        {
+            double decay = strainDecay(((OsuDifficultyHitObject)current).AdjustedDeltaTime);
+
+            return currentStrain * decay + calculateAdjustedDifficulty(current, mods, includeSliders) * (1 - decay);
+        }
 
         protected override double CalculateInitialStrain(double time, DifficultyHitObject current) =>
             currentStrain * strainDecay(time - current.Previous().StartTime);
@@ -43,10 +53,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (Mods.Any(m => m is OsuModAutopilot))
                 return 0;
 
-            double decay = strainDecay(((OsuDifficultyHitObject)current).AdjustedDeltaTime);
-
-            currentStrain *= decay;
-            currentStrain += calculateAdjustedDifficulty(current) * (1 - decay);
+            currentStrain = AdvanceStrainState(currentStrain, Mods, current, IncludeSliders);
 
             if (current.BaseObject is Slider)
                 sliderStrains.Add(currentStrain);
@@ -54,7 +61,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             return currentStrain;
         }
 
-        private double calculateAdjustedDifficulty(DifficultyHitObject current)
+        private static double calculateAdjustedDifficulty(DifficultyHitObject current, IReadOnlyList<Mod> mods, bool includeSliders)
         {
             const double skill_multiplier_snap = 71.0;
             const double skill_multiplier_agility = 1.63;
@@ -64,15 +71,15 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (current.BaseObject is Spinner)
                 return SpinnerEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_spinner;
 
-            double snapDifficulty = SnapAimEvaluator.EvaluateDifficultyOf(current, IncludeSliders) * skill_multiplier_snap;
+            double snapDifficulty = SnapAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_snap;
             double agilityDifficulty = AgilityEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_agility;
-            double flowDifficulty = FlowAimEvaluator.EvaluateDifficultyOf(current, IncludeSliders) * skill_multiplier_flow;
+            double flowDifficulty = FlowAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_flow;
 
-            double totalDifficulty = calculateTotalValue(snapDifficulty, agilityDifficulty, flowDifficulty);
+            double totalDifficulty = ComputeOverallStrain(snapDifficulty, agilityDifficulty, flowDifficulty, mods);
 
-            if (Mods.Any(m => m is OsuModMagnetised))
+            if (mods.Any(m => m is OsuModMagnetised))
             {
-                float magnetisedStrength = Mods.OfType<OsuModMagnetised>().First().AttractionStrength.Value;
+                float magnetisedStrength = mods.OfType<OsuModMagnetised>().First().AttractionStrength.Value;
                 totalDifficulty *= 1.0 - magnetisedStrength;
             }
 
@@ -81,7 +88,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             return totalDifficulty;
         }
 
-        private double calculateTotalValue(double snapDifficulty, double agilityDifficulty, double flowDifficulty)
+        /// <summary>
+        /// Combines the snap, agility, and flow components into a single overall strain value.
+        /// </summary>
+        public static double ComputeOverallStrain(double snapDifficulty, double agilityDifficulty, double flowDifficulty, IReadOnlyList<Mod> mods)
         {
             const double skill_multiplier_total = 1.12;
             const double combined_snap_norm_exponent = 1.2;
@@ -94,14 +104,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             double pSnap = calculateSnapFlowProbability(flowDifficulty / combinedSnapDifficulty);
             double pFlow = 1 - pSnap;
 
-            if (Mods.Any(m => m is OsuModTouchDevice))
+            if (mods.Any(m => m is OsuModTouchDevice))
             {
                 // we don't adjust agility here since agility represents TD difficulty in a decent enough way
                 snapDifficulty = DiffUtils.Pow(snapDifficulty, 0.89);
                 combinedSnapDifficulty = DiffUtils.Norm(combined_snap_norm_exponent, snapDifficulty, agilityDifficulty);
             }
 
-            if (Mods.Any(m => m is OsuModRelax))
+            if (mods.Any(m => m is OsuModRelax))
             {
                 combinedSnapDifficulty *= 0.75;
                 flowDifficulty *= 0.6;
@@ -109,9 +119,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             double totalDifficulty = combinedSnapDifficulty * pSnap + flowDifficulty * pFlow;
 
-            double totalStrain = totalDifficulty * skill_multiplier_total;
-
-            return totalStrain;
+            return totalDifficulty * skill_multiplier_total;
         }
 
         // A function that turns the ratio of snap : flow into the probability of snapping/flowing
