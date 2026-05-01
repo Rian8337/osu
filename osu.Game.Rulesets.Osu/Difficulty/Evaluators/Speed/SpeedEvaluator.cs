@@ -22,14 +22,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
         /// <item><description>and how easily they can be cheesed.</description></item>
         /// </list>
         /// </summary>
-        public static double EvaluateDifficultyOf(DifficultyHitObject current)
+        public static double EvaluateDifficultyOf(DifficultyHitObject current, double strainTimeMultiplier = 1.0)
         {
             if (current.BaseObject is Spinner)
                 return 0;
 
             var osuCurrObj = (OsuDifficultyHitObject)current;
 
-            double strainTime = osuCurrObj.AdjustedDeltaTime;
+            double strainTime = osuCurrObj.AdjustedDeltaTime * strainTimeMultiplier;
             double doubletapness = 1.0 - osuCurrObj.GetDoubletapness((OsuDifficultyHitObject?)osuCurrObj.Next(0));
 
             // Cap deltatime to the OD 300 hitwindow.
@@ -46,7 +46,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
             // Base difficulty with all bonuses
             double speedDifficulty = (1 + speedBonus) * 1000 / strainTime;
 
-            speedDifficulty *= highBpmBonus(osuCurrObj.AdjustedDeltaTime);
+            speedDifficulty *= highBpmBonus(osuCurrObj.AdjustedDeltaTime * strainTimeMultiplier);
 
             // Apply penalty if there's doubletappable doubles
             return speedDifficulty * doubletapness;

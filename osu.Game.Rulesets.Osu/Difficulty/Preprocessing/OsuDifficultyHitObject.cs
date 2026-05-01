@@ -127,6 +127,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
         /// </summary>
         public double SmallCircleBonus { get; private set; }
 
+        /// <summary>
+        /// Touch-specific data for this <see cref="OsuDifficultyHitObject"/>.
+        /// Populated by <see cref="OsuTouchActionSequenceOptimizer.FindTouchDataOfOptimalSequence"/>.
+        /// </summary>
+        public OsuDifficultyHitObjectTouchData? TouchData { get; internal set; }
+
         private readonly OsuDifficultyHitObject? lastLastDifficultyObject;
         private readonly OsuDifficultyHitObject? lastDifficultyObject;
 
@@ -408,5 +414,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
         {
             return difficultyHitObject.LazyEndPosition ?? difficultyHitObject.BaseObject.StackedPosition;
         }
+
+        public Vector2 GetEndCursorPosition() => LazyEndPosition ?? BaseObject.StackedPosition;
     }
 }

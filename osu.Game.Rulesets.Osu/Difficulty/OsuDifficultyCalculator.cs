@@ -175,6 +175,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty
                 objects.Add(new OsuDifficultyHitObject(beatmap.HitObjects[i], beatmap.HitObjects[i - 1], clockRate, objects, objects.Count));
             }
 
+            if (mods.Any(m => m is OsuModTouchDevice))
+            {
+                var osuDifficultyHitObjects = objects.Cast<OsuDifficultyHitObject>().ToList();
+                var touchDataList = OsuTouchActionSequenceOptimizer.FindTouchDataOfOptimalSequence(osuDifficultyHitObjects, mods);
+                for (int i = 0; i < osuDifficultyHitObjects.Count; i++)
+                    osuDifficultyHitObjects[i].TouchData = touchDataList[i];
+            }
+
             return objects;
         }
 

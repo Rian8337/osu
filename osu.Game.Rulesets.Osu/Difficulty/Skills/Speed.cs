@@ -10,6 +10,7 @@ using osu.Game.Rulesets.Difficulty.Utils;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
+using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Osu.Objects;
 
 namespace osu.Game.Rulesets.Osu.Difficulty.Skills
@@ -43,7 +44,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         {
             double decay = strainDecay(((OsuDifficultyHitObject)current).AdjustedDeltaTime);
 
-            double speedDifficulty = SpeedEvaluator.EvaluateDifficultyOf(current);
+            double speedDifficulty = mods.Any(m => m is OsuModTouchDevice)
+                ? TouchSpeedEvaluator.EvaluateDifficultyOf(current)
+                : SpeedEvaluator.EvaluateDifficultyOf(current);
 
             return currentStrain * decay + speedDifficulty * (1 - decay) * skill_multiplier;
         }
