@@ -68,7 +68,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         private static double calculateAdjustedDifficulty(DifficultyHitObject current, IReadOnlyList<Mod> mods)
         {
-            double difficulty = SpeedEvaluator.EvaluateDifficultyOf(current);
+            double difficulty = mods.Any(m => m is OsuModTouchDevice)
+                ? TouchSpeedEvaluator.EvaluateDifficultyOf(current)
+                : SpeedEvaluator.EvaluateDifficultyOf(current);
 
             if (mods.Any(m => m is OsuModAutopilot))
                 difficulty *= 0.5;

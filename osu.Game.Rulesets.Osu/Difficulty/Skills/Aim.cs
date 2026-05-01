@@ -71,9 +71,22 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (current.BaseObject is Spinner)
                 return SpinnerEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_spinner;
 
-            double snapDifficulty = SnapAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_snap;
-            double agilityDifficulty = AgilityEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_agility;
-            double flowDifficulty = FlowAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_flow;
+            double snapDifficulty;
+            double agilityDifficulty;
+            double flowDifficulty;
+
+            if (mods.Any(m => m is OsuModTouchDevice))
+            {
+                snapDifficulty = TouchSnapAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_snap;
+                agilityDifficulty = TouchAgilityEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_agility;
+                flowDifficulty = TouchFlowAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_flow;
+            }
+            else
+            {
+                snapDifficulty = SnapAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_snap;
+                agilityDifficulty = AgilityEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_agility;
+                flowDifficulty = FlowAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_flow;
+            }
 
             double totalDifficulty = ComputeOverallStrain(snapDifficulty, agilityDifficulty, flowDifficulty, mods);
 
@@ -103,13 +116,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             double pSnap = calculateSnapFlowProbability(flowDifficulty / combinedSnapDifficulty);
             double pFlow = 1 - pSnap;
-
-            if (mods.Any(m => m is OsuModTouchDevice))
-            {
-                // we don't adjust agility here since agility represents TD difficulty in a decent enough way
-                snapDifficulty = DiffUtils.Pow(snapDifficulty, 0.89);
-                combinedSnapDifficulty = DiffUtils.Norm(combined_snap_norm_exponent, snapDifficulty, agilityDifficulty);
-            }
 
             if (mods.Any(m => m is OsuModRelax))
             {
