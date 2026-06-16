@@ -22,7 +22,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
         {
             var osuCurrent = (OsuDifficultyHitObject)current;
 
-            if (osuCurrent.TouchData == null || osuCurrent.TouchData.Value.PerHandObject == null)
+            if (osuCurrent.TouchData?.PerHandObject == null)
                 return 0;
 
             var touchData = osuCurrent.TouchData.Value;
@@ -33,8 +33,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
             bool isHandSwitch = touchData.AimingHand != touchData.PrevAimingHand;
 
             bool isSingletapped = touchData.Action is not OsuTouchAction.OsuDragAction
-                && touchData.PrevAction is not OsuTouchAction.OsuDragAction
-                && touchData.AimingHand == touchData.PrevAimingHand;
+                                  && touchData.PrevAction is not OsuTouchAction.OsuDragAction
+                                  && touchData.AimingHand == touchData.PrevAimingHand;
 
             // During a drag action, the hand action assigned to an object is the hand used to aim that object.
             // Thus, the opposite hand must have been used to tap that object. Let us call this opposite hand the drag tapping hand.
@@ -42,8 +42,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
             // the per-hand object's strain time does not reflect this.
             // Thus, we should calculate the strain of this object using the beatmap object instead of the per hand object.
             bool calculateStrainWithOriginalObject = touchData.Action is not OsuTouchAction.OsuDragAction
-                && touchData.PrevAction is OsuTouchAction.OsuDragAction
-                && touchData.AimingHand != touchData.PrevAimingHand;
+                                                     && touchData.PrevAction is OsuTouchAction.OsuDragAction
+                                                     && touchData.AimingHand != touchData.PrevAimingHand;
 
             OsuDifficultyHitObject evaluationObject = calculateStrainWithOriginalObject ? osuCurrent : touchData.PerHandObject;
 

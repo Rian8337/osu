@@ -25,7 +25,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Aim
         {
             var osuCurrent = (OsuDifficultyHitObject)current;
 
-            if (osuCurrent.TouchData == null || osuCurrent.TouchData.Value.PerHandObject == null)
+            if (osuCurrent.TouchData?.PerHandObject == null)
                 return 0;
 
             var touchData = osuCurrent.TouchData.Value;
@@ -33,7 +33,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Aim
             bool isHandSwitch = touchData.AimingHand != touchData.PrevAimingHand;
 
             bool isTransitionToDrag = touchData.Action is OsuTouchAction.OsuDragAction
-                && touchData.PrevAction is not OsuTouchAction.OsuDragAction;
+                                      && touchData.PrevAction is not OsuTouchAction.OsuDragAction;
 
             double agilityMultiplier = 1.0;
 
