@@ -21,7 +21,21 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
     /// </summary>
     public class Aim : VariableLengthStrainSkill
     {
+        private const double skill_multiplier_snap = 70.9;
+        private const double skill_multiplier_agility = 2.35;
+        private const double skill_multiplier_flow = 242.0;
+        private const double skill_multiplier_total = 1.12;
+        private const double combined_snap_norm_exponent = 1.2;
+        private const double strain_decay_base = 0.2;
+
+        private const int reduced_section_time = 4000;
+        private const double reduced_strain_baseline = 0.727;
+
         public readonly bool IncludeSliders;
+
+        private readonly List<double> sliderStrains = new List<double>();
+
+        private double currentStrain;
 
         public Aim(Mod[] mods, bool includeSliders)
             : base(mods)
@@ -29,69 +43,45 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             IncludeSliders = includeSliders;
         }
 
-        private double currentStrain;
-
-        private double skillMultiplierSnap => 70.9;
-        private double skillMultiplierAgility => 2.35;
-        private double skillMultiplierFlow => 242.0;
-        private double skillMultiplierTotal => 1.12;
-        private double combinedSnapNormExponent => 1.2;
+        private static double strainDecay(double ms) => Math.Pow(strain_decay_base, ms / 1000);
 
         /// <summary>
-        /// The number of sections with the highest strains, which the peak strain reductions will apply to.
-        /// This is done in order to decrease their impact on the overall difficulty of the map for this skill.
+        /// Computes the next aim strain by applying strain decay and evaluating the current object's snap, agility, and flow difficulty.
         /// </summary>
-        private int reducedSectionTime => 4000;
-
-        /// <summary>
-        /// The baseline multiplier applied to the section with the biggest strain.
-        /// </summary>
-        private double reducedStrainBaseline => 0.727;
-
-        private readonly List<double> sliderStrains = new List<double>();
-
-        private double strainDecay(double ms) => Math.Pow(0.2, ms / 1000);
-
-        protected override double CalculateInitialStrain(double time, DifficultyHitObject current) =>
-            currentStrain * strainDecay(time - current.Previous(0).StartTime);
-
-        protected override double StrainValueAt(DifficultyHitObject current)
+        public static double AdvanceStrainState(double currentStrain, IReadOnlyList<Mod> mods, DifficultyHitObject current, bool includeSliders)
         {
             double decay = strainDecay(((OsuDifficultyHitObject)current).AdjustedDeltaTime);
 
-            double snapDifficulty = SnapAimEvaluator.EvaluateDifficultyOf(current, IncludeSliders) * skillMultiplierSnap;
-            double agilityDifficulty = AgilityEvaluator.EvaluateDifficultyOf(current) * skillMultiplierAgility;
-            double flowDifficulty = FlowAimEvaluator.EvaluateDifficultyOf(current, IncludeSliders) * skillMultiplierFlow;
+            double snapDifficulty = SnapAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_snap;
+            double agilityDifficulty = AgilityEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_agility;
+            double flowDifficulty = FlowAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_flow;
 
-            double totalDifficulty = calculateTotalValue(snapDifficulty, agilityDifficulty, flowDifficulty);
+            double totalDifficulty = ComputeOverallStrain(snapDifficulty, agilityDifficulty, flowDifficulty, mods);
 
-            currentStrain *= decay;
-            currentStrain += totalDifficulty * (1 - decay);
-
-            if (current.BaseObject is Slider)
-                sliderStrains.Add(currentStrain);
-
-            return currentStrain;
+            return currentStrain * decay + totalDifficulty * (1 - decay);
         }
 
-        private double calculateTotalValue(double snapDifficulty, double agilityDifficulty, double flowDifficulty)
+        /// <summary>
+        /// Combines the snap, agility, and flow components into a single overall strain value.
+        /// </summary>
+        public static double ComputeOverallStrain(double snapDifficulty, double agilityDifficulty, double flowDifficulty, IReadOnlyList<Mod> mods)
         {
             // We compare flow to combined snap and agility because snap by itself doesn't have enough difficulty to be above flow on streams
             // Agility on the other hand is supposed to measure the rate of cursor velocity changes while snapping
             // So snapping every circle on a stream requires an enormous amount of agility at which point it's easier to flow
-            double combinedSnapDifficulty = DifficultyCalculationUtils.Norm(combinedSnapNormExponent, snapDifficulty, agilityDifficulty);
+            double combinedSnapDifficulty = DifficultyCalculationUtils.Norm(combined_snap_norm_exponent, snapDifficulty, agilityDifficulty);
 
             double pSnap = calculateSnapFlowProbability(flowDifficulty / combinedSnapDifficulty);
             double pFlow = 1 - pSnap;
 
-            if (Mods.Any(m => m is OsuModTouchDevice))
+            if (mods.Any(m => m is OsuModTouchDevice))
             {
                 // we don't adjust agility here since agility represents TD difficulty in a decent enough way
                 snapDifficulty = Math.Pow(snapDifficulty, 0.89);
-                combinedSnapDifficulty = DifficultyCalculationUtils.Norm(combinedSnapNormExponent, snapDifficulty, agilityDifficulty);
+                combinedSnapDifficulty = DifficultyCalculationUtils.Norm(combined_snap_norm_exponent, snapDifficulty, agilityDifficulty);
             }
 
-            if (Mods.Any(m => m is OsuModRelax))
+            if (mods.Any(m => m is OsuModRelax))
             {
                 combinedSnapDifficulty *= 0.75;
                 flowDifficulty *= 0.6;
@@ -99,9 +89,20 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             double totalDifficulty = combinedSnapDifficulty * pSnap + flowDifficulty * pFlow;
 
-            double totalStrain = totalDifficulty * skillMultiplierTotal;
+            return totalDifficulty * skill_multiplier_total;
+        }
 
-            return totalStrain;
+        protected override double CalculateInitialStrain(double time, DifficultyHitObject current) =>
+            currentStrain * strainDecay(time - current.Previous(0).StartTime);
+
+        protected override double StrainValueAt(DifficultyHitObject current)
+        {
+            currentStrain = AdvanceStrainState(currentStrain, Mods, current, IncludeSliders);
+
+            if (current.BaseObject is Slider)
+                sliderStrains.Add(currentStrain);
+
+            return currentStrain;
         }
 
         // A function that turns the ratio of snap : flow into the probability of snapping/flowing
@@ -207,16 +208,16 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             // We are reducing the highest strains first to account for extreme difficulty spikes
             // Strains are split into 20ms chunks to try to mitigate inconsistencies caused by reducing strains
-            while (strains.Count > strainsToRemove && time < reducedSectionTime)
+            while (strains.Count > strainsToRemove && time < reduced_section_time)
             {
                 StrainPeak strain = strains[strainsToRemove];
 
                 for (double addedTime = 0; addedTime < strain.SectionLength; addedTime += chunk_size)
                 {
-                    double scale = Math.Log10(Interpolation.Lerp(1, 10, Math.Clamp((time + addedTime) / reducedSectionTime, 0, 1)));
+                    double scale = Math.Log10(Interpolation.Lerp(1, 10, Math.Clamp((time + addedTime) / reduced_section_time, 0, 1)));
 
                     strains.Add(new StrainPeak(
-                        strain.Value * Interpolation.Lerp(reducedStrainBaseline, 1.0, scale),
+                        strain.Value * Interpolation.Lerp(reduced_strain_baseline, 1.0, scale),
                         Math.Min(chunk_size, strain.SectionLength - addedTime)
                     ));
                 }

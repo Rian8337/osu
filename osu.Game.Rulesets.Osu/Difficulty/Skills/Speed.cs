@@ -3,14 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using osu.Game.Rulesets.Difficulty.Preprocessing;
-using osu.Game.Rulesets.Mods;
-using osu.Game.Rulesets.Osu.Objects;
 using System.Linq;
+using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Difficulty.Utils;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
+using osu.Game.Rulesets.Osu.Objects;
 
 namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 {
@@ -19,13 +19,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
     /// </summary>
     public class Speed : HarmonicSkill
     {
-        private double skillMultiplier => 1.16;
+        private const double skill_multiplier = 1.16;
+        private const double strain_decay_base = 0.3;
 
         private readonly List<double> sliderStrains = new List<double>();
 
         private double currentStrain;
-
-        private double strainDecayBase => 0.3;
 
         protected override double HarmonicScale => 20;
         protected override double DecayExponent => 0.9;
@@ -35,18 +34,32 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         {
         }
 
-        private double strainDecay(double ms) => Math.Pow(strainDecayBase, ms / 1000);
+        private static double strainDecay(double ms) => Math.Pow(strain_decay_base, ms / 1000);
 
-        protected override double ObjectDifficultyOf(DifficultyHitObject current)
+        /// <summary>
+        /// Computes the next speed strain by applying decay and evaluating the current object's speed difficulty.
+        /// </summary>
+        public static double AdvanceStrainState(double currentStrain, IReadOnlyList<Mod> mods, DifficultyHitObject current)
         {
             double decay = strainDecay(((OsuDifficultyHitObject)current).AdjustedDeltaTime);
 
-            currentStrain *= decay;
-            currentStrain += SpeedEvaluator.EvaluateDifficultyOf(current) * (1 - decay) * skillMultiplier;
+            double speedDifficulty = SpeedEvaluator.EvaluateDifficultyOf(current);
+
+            return currentStrain * decay + speedDifficulty * (1 - decay) * skill_multiplier;
+        }
+
+        /// <summary>
+        /// Scales the current speed strain by a rhythm multiplier to produce the final strain value.
+        /// </summary>
+        public static double ComputeOverallStrain(double currentStrain, double rhythm) => currentStrain * rhythm;
+
+        protected override double ObjectDifficultyOf(DifficultyHitObject current)
+        {
+            currentStrain = AdvanceStrainState(currentStrain, Mods, current);
 
             double currentRhythm = RhythmEvaluator.EvaluateDifficultyOf(current);
 
-            double totalStrain = currentStrain * currentRhythm;
+            double totalStrain = ComputeOverallStrain(currentStrain, currentRhythm);
 
             if (current.BaseObject is Slider)
                 sliderStrains.Add(totalStrain);
