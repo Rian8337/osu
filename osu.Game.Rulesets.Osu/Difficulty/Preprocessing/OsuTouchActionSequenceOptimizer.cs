@@ -44,9 +44,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 OsuTouchSequenceCandidate.CreateInitial(firstHitObject, OsuTouchHand.Left)
             };
 
-            for (int i = 0; i < objects.Count; i++)
+            foreach (var current in objects)
             {
-                var current = objects[i];
                 var nextCandidates = new List<OsuTouchSequenceCandidate>(currentCandidates.Count * actions.Length);
 
                 // Rhythm difficulty is independent of touch action sequence.
@@ -64,7 +63,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 }
 
                 // Only keep the top lowest star rating candidates.
-                nextCandidates.Sort((a, b) => a.ApproximateSR.CompareTo(b.ApproximateSR));
+                nextCandidates.Sort((a, b) => a.ApproximateStarRating.CompareTo(b.ApproximateStarRating));
                 if (nextCandidates.Count > beam_width)
                     nextCandidates.RemoveRange(beam_width, nextCandidates.Count - beam_width);
 
@@ -116,7 +115,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
             /// <summary>
             /// Approximate SR of the sequence so far, used to rank and prune candidates during beam search.
             /// </summary>
-            public readonly double ApproximateSR;
+            public readonly double ApproximateStarRating;
 
             private OsuTouchSequenceCandidate(
                 HandHistory leftHistory,
@@ -127,7 +126,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 double accumulatedWinding,
                 double aimStrain,
                 double speedStrain,
-                double approximateSR,
+                double approximateStarRating,
                 SequenceNode? pathTail)
             {
                 this.leftHistory = leftHistory;
@@ -138,7 +137,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 this.accumulatedWinding = accumulatedWinding;
                 this.aimStrain = aimStrain;
                 this.speedStrain = speedStrain;
-                ApproximateSR = approximateSR;
+                ApproximateStarRating = approximateStarRating;
                 this.pathTail = pathTail;
             }
 
@@ -162,7 +161,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                     accumulatedWinding: 0,
                     aimStrain: 0,
                     speedStrain: 0,
-                    approximateSR: 0,
+                    approximateStarRating: 0,
                     pathTail: null);
             }
 
@@ -216,12 +215,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
 
                 // The true SR is the sum of weighted section peaks, which is computationally expensive to compute.
                 // Using a power norm is a reasonable enough approximation for beam search.
-                double newApproximateSR = DifficultyCalculationUtils.Norm(pp_norm_exponent, ApproximateSR, totalStrain);
+                double newApproximateStarRating = DifficultyCalculationUtils.Norm(pp_norm_exponent, ApproximateStarRating, totalStrain);
 
                 return new OsuTouchSequenceCandidate(
                     newLeft, newRight, action, aimingHand,
                     nextHandSeparationAngle, nextAccumulatedWinding,
-                    newAimStrain, newSpeedStrain, newApproximateSR,
+                    newAimStrain, newSpeedStrain, newApproximateStarRating,
                     new SequenceNode(touchData, pathTail));
             }
 
