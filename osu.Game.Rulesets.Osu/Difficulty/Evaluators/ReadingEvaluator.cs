@@ -23,27 +23,48 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
             var currObj = (OsuDifficultyHitObject)current;
             var nextObj = (OsuDifficultyHitObject)current.Next();
 
-            double velocity = Math.Max(1, currObj.JumpDistance / currObj.AdjustedDeltaTime); // Only allow velocity to buff
-
             double currentVisibleObjectDensity = retrieveCurrentVisibleObjectDensity(currObj);
             double pastObjectDifficultyInfluence = getPastObjectDifficultyInfluence(currObj);
 
             double constantAngleNerfFactor = getConstantAngleNerfFactor(currObj);
 
+            // With touch device, use the per-hand object since the hand hitting the current object did not necessarily hit the previous object.
+            var movementObj = currObj.TouchData is { } touchData ? touchData.PerHandObject : currObj;
+            double velocity = movementObj != null ? Math.Max(1, movementObj.JumpDistance / currObj.AdjustedDeltaTime) : 1; // Only allow velocity to buff
+
+            double readingDifficulty = calculateReadingDifficulty(currObj, nextObj, hidden, velocity, currObj.Preempt, constantAngleNerfFactor, pastObjectDifficultyInfluence, currentVisibleObjectDensity);
+
+            // With touch device, the hand can also start moving to the current object as soon as it appears.
+            // Thus, it has more time to get there but less time to read the object.
+            double movementTime = Math.Min(movementObj?.AdjustedDeltaTime ?? 0, currObj.Preempt);
+
+            if (movementObj != null && movementTime > currObj.AdjustedDeltaTime)
+            {
+                double earlyVelocity = Math.Max(1, movementObj.JumpDistance / movementTime);
+                double readingTime = currObj.Preempt - (movementTime - currObj.AdjustedDeltaTime);
+
+                readingDifficulty = Math.Min(readingDifficulty,
+                    calculateReadingDifficulty(currObj, nextObj, hidden, earlyVelocity, readingTime, constantAngleNerfFactor, pastObjectDifficultyInfluence, currentVisibleObjectDensity));
+            }
+
+            // Having less time to process information is harder
+            readingDifficulty *= highBpmBonus(currObj.AdjustedDeltaTime);
+
+            return readingDifficulty;
+        }
+
+        private static double calculateReadingDifficulty(OsuDifficultyHitObject currObj, OsuDifficultyHitObject? nextObj, bool hidden, double velocity, double preempt,
+                                                         double constantAngleNerfFactor, double pastObjectDifficultyInfluence, double currentVisibleObjectDensity)
+        {
             double noteDensityDifficulty = calculateDensityDifficulty(nextObj, velocity, constantAngleNerfFactor, pastObjectDifficultyInfluence, currentVisibleObjectDensity);
 
             double hiddenDifficulty = hidden
                 ? calculateHiddenDifficulty(currObj, pastObjectDifficultyInfluence, currentVisibleObjectDensity, velocity, constantAngleNerfFactor)
                 : 0;
 
-            double preemptDifficulty = calculatePreemptDifficulty(velocity, constantAngleNerfFactor, currObj.Preempt);
+            double preemptDifficulty = calculatePreemptDifficulty(velocity, constantAngleNerfFactor, preempt);
 
-            double readingDifficulty = DiffUtils.Norm(1.5, preemptDifficulty, hiddenDifficulty, noteDensityDifficulty);
-
-            // Having less time to process information is harder
-            readingDifficulty *= highBpmBonus(currObj.AdjustedDeltaTime);
-
-            return readingDifficulty;
+            return DiffUtils.Norm(1.5, preemptDifficulty, hiddenDifficulty, noteDensityDifficulty);
         }
 
         /// <summary>

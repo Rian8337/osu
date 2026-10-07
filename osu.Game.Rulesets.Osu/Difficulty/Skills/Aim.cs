@@ -88,7 +88,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
                 flowDifficulty = FlowAimEvaluator.EvaluateDifficultyOf(current, includeSliders) * skill_multiplier_flow;
             }
 
-            double totalDifficulty = ComputeOverallStrain(snapDifficulty, agilityDifficulty, flowDifficulty, mods);
+            double totalDifficulty = calculateTotalValue(snapDifficulty, agilityDifficulty, flowDifficulty, mods);
 
             if (mods.Any(m => m is OsuModMagnetised))
             {
@@ -101,10 +101,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             return totalDifficulty;
         }
 
-        /// <summary>
-        /// Combines the snap, agility, and flow components into a single overall strain value.
-        /// </summary>
-        public static double ComputeOverallStrain(double snapDifficulty, double agilityDifficulty, double flowDifficulty, IReadOnlyList<Mod> mods)
+        private static double calculateTotalValue(double snapDifficulty, double agilityDifficulty, double flowDifficulty, IReadOnlyList<Mod> mods)
         {
             const double skill_multiplier_total = 1.12;
             const double combined_snap_norm_exponent = 1.2;
@@ -125,7 +122,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             double totalDifficulty = combinedSnapDifficulty * pSnap + flowDifficulty * pFlow;
 
-            return totalDifficulty * skill_multiplier_total;
+            double totalStrain = totalDifficulty * skill_multiplier_total;
+
+            return totalStrain;
         }
 
         // A function that turns the ratio of snap : flow into the probability of snapping/flowing

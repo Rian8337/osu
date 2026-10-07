@@ -66,20 +66,20 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             int totalHits = beatmap.HitObjects.Count;
 
-            double aimRating = calculateAimDifficultyRating(aimDifficultyValue);
-            double aimNoSlidersRating = calculateAimDifficultyRating(aimNoSlidersDifficultyValue);
+            double aimRating = CalculateAimDifficultyRating(aimDifficultyValue);
+            double aimNoSlidersRating = CalculateAimDifficultyRating(aimNoSlidersDifficultyValue);
 
             double sliderFactor = aimDifficultyValue > 0
                 ? aimNoSlidersRating / aimRating
                 : 1;
 
-            double speedRating = calculateDifficultyRating(speedDifficultyValue);
-            double readingRating = calculateDifficultyRating(readingDifficultyValue);
+            double speedRating = CalculateDifficultyRating(speedDifficultyValue);
+            double readingRating = CalculateDifficultyRating(readingDifficultyValue);
 
             double flashlightRating = 0.0;
 
             if (flashlight is not null)
-                flashlightRating = calculateDifficultyRating(flashlight.DifficultyValue());
+                flashlightRating = CalculateDifficultyRating(flashlight.DifficultyValue());
 
             double sliderNestedScorePerObject = LegacyScoreUtils.CalculateNestedScorePerObject(beatmap, totalHits);
             double legacyScoreBaseMultiplier = LegacyScoreUtils.CalculateDifficultyPeppyStars(WorkingBeatmap.Beatmap);
@@ -87,13 +87,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty
             var simulator = new OsuLegacyScoreSimulator();
             var scoreAttributes = simulator.Simulate(WorkingBeatmap, beatmap);
 
-            double baseAimPerformance = OsuPerformanceCalculator.DifficultyToPerformance(aimRating);
-            double baseSpeedPerformance = OsuPerformanceCalculator.DifficultyToPerformance(speedRating);
-            double baseReadingPerformance = OsuPerformanceCalculator.DifficultyToPerformance(readingRating);
-            double baseFlashlightPerformance = Flashlight.DifficultyToPerformance(flashlightRating);
-            double baseCognitionPerformance = SumCognitionDifficulty(baseReadingPerformance, baseFlashlightPerformance);
-
-            double basePerformance = DiffUtils.Norm(OsuPerformanceCalculator.PERFORMANCE_NORM_EXPONENT, baseAimPerformance, baseSpeedPerformance, baseCognitionPerformance);
+            double basePerformance = CalculateBasePerformance(aimRating, speedRating, readingRating, flashlightRating);
 
             double starRating = calculateStarRating(basePerformance);
 
@@ -137,9 +131,20 @@ namespace osu.Game.Rulesets.Osu.Difficulty
             return DiffUtils.Norm(OsuPerformanceCalculator.PERFORMANCE_NORM_EXPONENT, reading, flashlight * Math.Clamp(flashlight / reading, 0.25, 1.0));
         }
 
-        private double calculateAimDifficultyRating(double difficultyValue) => DiffUtils.Pow(difficultyValue, 0.63) * 0.02275;
+        public static double CalculateAimDifficultyRating(double difficultyValue) => DiffUtils.Pow(difficultyValue, 0.63) * 0.02275;
 
-        private double calculateDifficultyRating(double difficultyValue) => Math.Sqrt(difficultyValue) * 0.0675;
+        public static double CalculateDifficultyRating(double difficultyValue) => Math.Sqrt(difficultyValue) * 0.0675;
+
+        public static double CalculateBasePerformance(double aimRating, double speedRating, double readingRating, double flashlightRating)
+        {
+            double baseAimPerformance = OsuPerformanceCalculator.DifficultyToPerformance(aimRating);
+            double baseSpeedPerformance = OsuPerformanceCalculator.DifficultyToPerformance(speedRating);
+            double baseReadingPerformance = OsuPerformanceCalculator.DifficultyToPerformance(readingRating);
+            double baseFlashlightPerformance = Flashlight.DifficultyToPerformance(flashlightRating);
+            double baseCognitionPerformance = SumCognitionDifficulty(baseReadingPerformance, baseFlashlightPerformance);
+
+            return DiffUtils.Norm(OsuPerformanceCalculator.PERFORMANCE_NORM_EXPONENT, baseAimPerformance, baseSpeedPerformance, baseCognitionPerformance);
+        }
 
         private double calculateStarRating(double basePerformance)
         {

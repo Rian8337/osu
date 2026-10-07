@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Utils;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed;
 using osu.Game.Rulesets.Osu.Difficulty.Skills;
+using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Osu.Objects;
 using osuTK;
 
@@ -19,10 +21,19 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
     public static class OsuTouchActionSequenceOptimizer
     {
         /// <summary>
-        /// Controls the maximum number of sequences considered at once.
-        /// As beam_width tends to infinity, the optimizer finds the true optimum.
+        /// Controls the maximum number of sequences considered at once in each pass.
         /// </summary>
-        private const int beam_width = 20;
+        private static readonly int[] beam_widths = [5, 15];
+
+        /// <summary>
+        /// Number of previous per-hand objects kept during beam search, since keeping the full history is computationally expensive.
+        /// </summary>
+        private const int max_per_hand_history = 6;
+
+        /// <summary>
+        /// Swapping left and right hands gives the same difficulty, so every candidate starts with the right hand.
+        /// </summary>
+        private const OsuTouchHand first_hand = OsuTouchHand.Right;
 
         private static readonly OsuTouchAction[] actions = [OsuTouchAction.Left, OsuTouchAction.Right, OsuTouchAction.Drag];
 
@@ -33,6 +44,43 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
         {
             if (objects.Count == 0) return [];
 
+            // Rhythm difficulty is independent of touch action sequence.
+            // Since rhythm calc is computationally expensive, we compute it here instead of inside WithNextObjectHit() so that the result can be reused.
+            double[] rhythms = new double[objects.Count];
+            for (int i = 0; i < objects.Count; i++)
+                rhythms[i] = RhythmEvaluator.EvaluateDifficultyOf(objects[i]);
+
+            // Start with dragging every object, which is the same as playing with a mouse.
+            var best = OsuTouchSequenceCandidate.CreateInitial((OsuHitObject)objects[0].LastObject, first_hand);
+            for (int i = 0; i < objects.Count; i++)
+                best = best.WithNextObjectHit(objects[i], OsuTouchAction.Drag, mods, rhythms[i]);
+
+            var bestTouchData = rebuildPerHandObjects(objects, best.GetTouchDataList(), first_hand);
+            var bestDifficulty = calculateDifficulty(objects, bestTouchData, mods, rhythms);
+
+            // Use the best sequence found so far as the reference for estimating performance.
+            foreach (int beamWidth in beam_widths)
+            {
+                var candidate = search(objects, mods, rhythms, new PerformanceEstimator(best, bestDifficulty), beamWidth);
+                var touchData = rebuildPerHandObjects(objects, candidate.GetTouchDataList(), first_hand);
+                var difficulty = calculateDifficulty(objects, touchData, mods, rhythms);
+
+                if (difficulty.Performance >= bestDifficulty.Performance)
+                    continue;
+
+                best = candidate;
+                bestTouchData = touchData;
+                bestDifficulty = difficulty;
+            }
+
+            return bestTouchData;
+        }
+
+        /// <summary>
+        /// Finds the touch action sequence with the lowest estimated performance using beam search.
+        /// </summary>
+        private static OsuTouchSequenceCandidate search(List<OsuDifficultyHitObject> objects, Mod[] mods, double[] rhythms, PerformanceEstimator estimator, int beamWidth)
+        {
             // The first OsuDifficultyHitObject actually corresponds to the second object in the map, since they are constructed using two objects to compute jump distance.
             var firstHitObject = (OsuHitObject)objects[0].LastObject;
 
@@ -40,37 +88,148 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
             // It cannot be dragged, since objects hit with drag are still assigned a hand corresponding to the most recent non-dragged object.
             var currentCandidates = new List<OsuTouchSequenceCandidate>
             {
-                OsuTouchSequenceCandidate.CreateInitial(firstHitObject, OsuTouchHand.Right),
-                OsuTouchSequenceCandidate.CreateInitial(firstHitObject, OsuTouchHand.Left)
+                OsuTouchSequenceCandidate.CreateInitial(firstHitObject, first_hand)
             };
 
             foreach (var current in objects)
             {
                 var nextCandidates = new List<OsuTouchSequenceCandidate>(currentCandidates.Count * actions.Length);
 
-                // Rhythm difficulty is independent of touch action sequence.
-                // Since rhythm calc is computationally expensive, we compute it here instead of inside WithNextObjectHit() so that the result can be reused.
-                double rhythm = RhythmEvaluator.EvaluateDifficultyOf(current);
-
                 foreach (var candidate in currentCandidates)
                 {
                     foreach (var action in actions)
                     {
                         // Construct a new action sequence from the previous candidate, assuming that the current object was hit using action.
-                        var nextCandidate = candidate.WithNextObjectHit(current, action, mods, rhythm);
+                        var nextCandidate = candidate.WithNextObjectHit(current, action, mods, rhythms[current.Index]);
                         nextCandidates.Add(nextCandidate);
                     }
                 }
 
-                // Only keep the top lowest star rating candidates.
-                nextCandidates.Sort((a, b) => a.ApproximateStarRating.CompareTo(b.ApproximateStarRating));
-                if (nextCandidates.Count > beam_width)
-                    nextCandidates.RemoveRange(beam_width, nextCandidates.Count - beam_width);
-
-                currentCandidates = nextCandidates;
+                // Only keep the candidates with the lowest estimated performance.
+                var bestCandidate = currentCandidates[0];
+                currentCandidates = nextCandidates.OrderBy(c => estimator.EstimatePerformance(c, bestCandidate, current.Index)).Take(beamWidth).ToList();
             }
 
-            return currentCandidates[0].GetTouchDataList();
+            return currentCandidates[0];
+        }
+
+        /// <summary>
+        /// Calculates the difficulty values of <paramref name="objects"/> when hit using <paramref name="touchData"/>.
+        /// </summary>
+        private static SequenceDifficulty calculateDifficulty(List<OsuDifficultyHitObject> objects, List<OsuDifficultyHitObjectTouchData> touchData, Mod[] mods, double[] rhythms)
+        {
+            var aim = new Aim(mods, true);
+            var speed = new Speed(mods, rhythms);
+            var reading = new Reading(mods);
+
+            // The first hit object of the beatmap does not have a corresponding OsuDifficultyHitObject.
+            var flashlight = mods.Any(m => m is OsuModFlashlight) ? new Flashlight(mods, objects.Count + 1) : null;
+
+            for (int i = 0; i < objects.Count; i++)
+                objects[i].TouchData = touchData[i];
+
+            foreach (var obj in objects)
+            {
+                aim.Process(obj);
+                speed.Process(obj);
+                reading.Process(obj);
+                flashlight?.Process(obj);
+            }
+
+            foreach (var obj in objects)
+                obj.TouchData = null;
+
+            return new SequenceDifficulty(aim.DifficultyValue(), speed.DifficultyValue(), reading.DifficultyValue(), flashlight?.DifficultyValue() ?? 0);
+        }
+
+        private readonly record struct SequenceDifficulty(double Aim, double Speed, double Reading, double Flashlight)
+        {
+            public double Performance => OsuDifficultyCalculator.CalculateBasePerformance(
+                OsuDifficultyCalculator.CalculateAimDifficultyRating(Aim),
+                OsuDifficultyCalculator.CalculateDifficultyRating(Speed),
+                OsuDifficultyCalculator.CalculateDifficultyRating(Reading),
+                OsuDifficultyCalculator.CalculateDifficultyRating(Flashlight));
+        }
+
+        /// <summary>
+        /// Estimates the final performance of a partial sequence using a reference sequence.
+        /// </summary>
+        private sealed class PerformanceEstimator
+        {
+            private readonly List<OsuTouchSequenceCandidate> reference;
+            private readonly SequenceDifficulty referenceDifficulty;
+            private readonly double aimScale;
+            private readonly double speedScale;
+
+            public PerformanceEstimator(OsuTouchSequenceCandidate reference, SequenceDifficulty referenceDifficulty)
+            {
+                this.reference = reference.GetHistory();
+                this.referenceDifficulty = referenceDifficulty;
+
+                aimScale = reference.AimPowerSum > 0 ? referenceDifficulty.Aim / DiffUtils.Pow(reference.AimPowerSum, 1 / OsuTouchSequenceCandidate.AIM_EXPONENT) : 0;
+                speedScale = reference.SpeedPowerSum > 0 ? referenceDifficulty.Speed / DiffUtils.Pow(reference.SpeedPowerSum, 1 / OsuTouchSequenceCandidate.SPEED_EXPONENT) : 0;
+            }
+
+            public double EstimatePerformance(OsuTouchSequenceCandidate candidate, OsuTouchSequenceCandidate bestCandidate, int index)
+            {
+                var referenceEnd = reference[^1];
+                var referenceCurrent = reference[index];
+                var referencePrevious = index > 0 ? reference[index - 1] : null;
+
+                // Since we cannot know the rest of the sequence yet, assume the remaining objects improve on the reference by the same ratio as the best candidate has so far.
+                double aimRatio = referencePrevious?.AimPowerSum > 0 ? bestCandidate.AimPowerSum / referencePrevious.AimPowerSum : 1;
+                double speedRatio = referencePrevious?.SpeedPowerSum > 0 ? bestCandidate.SpeedPowerSum / referencePrevious.SpeedPowerSum : 1;
+
+                double aimPowerSum = candidate.AimPowerSum + aimRatio * (referenceEnd.AimPowerSum - referenceCurrent.AimPowerSum);
+                double speedPowerSum = candidate.SpeedPowerSum + speedRatio * (referenceEnd.SpeedPowerSum - referenceCurrent.SpeedPowerSum);
+
+                double aim = aimScale * DiffUtils.Pow(aimPowerSum, 1 / OsuTouchSequenceCandidate.AIM_EXPONENT);
+                double speed = speedScale * DiffUtils.Pow(speedPowerSum, 1 / OsuTouchSequenceCandidate.SPEED_EXPONENT);
+
+                return new SequenceDifficulty(aim, speed, referenceDifficulty.Reading, referenceDifficulty.Flashlight).Performance;
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds the per-hand objects of the chosen sequence, since they only keep a limited history during beam search.
+        /// </summary>
+        private static List<OsuDifficultyHitObjectTouchData> rebuildPerHandObjects(List<OsuDifficultyHitObject> objects, List<OsuDifficultyHitObjectTouchData> touchDataList, OsuTouchHand firstHand)
+        {
+            var firstHitObject = (OsuHitObject)objects[0].LastObject;
+
+            var leftObjects = new List<DifficultyHitObject>();
+            var rightObjects = new List<DifficultyHitObject>();
+            OsuHitObject? lastLeftHit = firstHand == OsuTouchHand.Left ? firstHitObject : null;
+            OsuHitObject? lastRightHit = firstHand == OsuTouchHand.Right ? firstHitObject : null;
+
+            var rebuiltTouchDataList = new List<OsuDifficultyHitObjectTouchData>(touchDataList.Count);
+
+            for (int i = 0; i < objects.Count; i++)
+            {
+                var current = objects[i];
+                var touchData = touchDataList[i];
+
+                bool isLeft = touchData.AimingHand == OsuTouchHand.Left;
+                var handObjects = isLeft ? leftObjects : rightObjects;
+                OsuHitObject? lastHit = isLeft ? lastLeftHit : lastRightHit;
+
+                OsuDifficultyHitObject? perHandObject = null;
+
+                if (lastHit != null)
+                {
+                    perHandObject = new OsuDifficultyHitObject(current.BaseObject, lastHit, current.ClockRate, handObjects, handObjects.Count);
+                    handObjects.Add(perHandObject);
+                }
+
+                if (isLeft)
+                    lastLeftHit = (OsuHitObject)current.BaseObject;
+                else
+                    lastRightHit = (OsuHitObject)current.BaseObject;
+
+                rebuiltTouchDataList.Add(touchData with { PerHandObject = perHandObject });
+            }
+
+            return rebuiltTouchDataList;
         }
 
         /// <summary>
@@ -80,7 +239,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
         private sealed class OsuTouchSequenceCandidate
         {
             private const double winding_decay_base = 0.8;
-            private const double pp_norm_exponent = 6;
+
+            public const double AIM_EXPONENT = 6;
+            public const double SPEED_EXPONENT = 4;
 
             private readonly HandHistory leftHistory;
             private readonly HandHistory rightHistory;
@@ -107,15 +268,25 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
             private readonly double speedStrain;
 
             /// <summary>
-            /// Tail of a reverse linked list storing <see cref="OsuDifficultyHitObjectTouchData"/>.
+            /// The previous candidate in the sequence.
             /// Used to reconstruct a list of <see cref="OsuDifficultyHitObjectTouchData"/>  per object once the optimal sequence has been determined.
             /// </summary>
-            private readonly SequenceNode? pathTail;
+            private readonly OsuTouchSequenceCandidate? previous;
 
             /// <summary>
-            /// Approximate SR of the sequence so far, used to rank and prune candidates during beam search.
+            /// The <see cref="OsuDifficultyHitObjectTouchData"/> of the most recently hit object.
             /// </summary>
-            public readonly double ApproximateStarRating;
+            private readonly OsuDifficultyHitObjectTouchData lastTouchData;
+
+            /// <summary>
+            /// Sum of aim strains raised to <see cref="AIM_EXPONENT"/>, weighted by the time between objects.
+            /// </summary>
+            public readonly double AimPowerSum;
+
+            /// <summary>
+            /// Sum of speed strains raised to <see cref="SPEED_EXPONENT"/>.
+            /// </summary>
+            public readonly double SpeedPowerSum;
 
             private OsuTouchSequenceCandidate(
                 HandHistory leftHistory,
@@ -126,8 +297,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 double accumulatedWinding,
                 double aimStrain,
                 double speedStrain,
-                double approximateStarRating,
-                SequenceNode? pathTail)
+                double aimPowerSum,
+                double speedPowerSum,
+                OsuTouchSequenceCandidate? previous,
+                OsuDifficultyHitObjectTouchData lastTouchData)
             {
                 this.leftHistory = leftHistory;
                 this.rightHistory = rightHistory;
@@ -137,8 +310,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 this.accumulatedWinding = accumulatedWinding;
                 this.aimStrain = aimStrain;
                 this.speedStrain = speedStrain;
-                ApproximateStarRating = approximateStarRating;
-                this.pathTail = pathTail;
+                AimPowerSum = aimPowerSum;
+                SpeedPowerSum = speedPowerSum;
+                this.previous = previous;
+                this.lastTouchData = lastTouchData;
             }
 
             /// <summary>
@@ -161,8 +336,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                     accumulatedWinding: 0,
                     aimStrain: 0,
                     speedStrain: 0,
-                    approximateStarRating: 0,
-                    pathTail: null);
+                    aimPowerSum: 0,
+                    speedPowerSum: 0,
+                    previous: null,
+                    lastTouchData: default);
             }
 
             /// <summary>
@@ -171,7 +348,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
             public OsuTouchSequenceCandidate WithNextObjectHit(OsuDifficultyHitObject current, OsuTouchAction action, Mod[] mods, double rhythm)
             {
                 // Determine which hand is aiming the current object.
-                OsuTouchHand aimingHand = action.IsDrag ? lastAimingHand : ((OsuTouchAction.OsuHandAction)action).Hand;
+                OsuTouchHand aimingHand = action is OsuTouchAction.OsuHandAction handAction ? handAction.Hand : lastAimingHand;
 
                 // Create a synthetic difficulty hit object with only hit objects that were hit by aimingHand.
                 HandHistory aimingHandHistory = aimingHand == OsuTouchHand.Left ? leftHistory : rightHistory;
@@ -210,18 +387,26 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
 
                 current.TouchData = previousTouchData;
 
-                // 1.5 is an approximate relation between strain values and PP, since SR ~ sqrt(sum of weighted strains) and PP ~ SR^3
-                double totalStrain = DiffUtils.Norm(1.5, newAimStrain, currentSpeedStrain);
-
-                // The true SR is the sum of weighted section peaks, which is computationally expensive to compute.
-                // Using a power norm is a reasonable enough approximation for beam search.
-                double newApproximateStarRating = DiffUtils.Norm(pp_norm_exponent, ApproximateStarRating, totalStrain);
+                double newAimPowerSum = AimPowerSum + DiffUtils.Pow(newAimStrain, AIM_EXPONENT) * current.AdjustedDeltaTime;
+                double newSpeedPowerSum = SpeedPowerSum + DiffUtils.Pow(currentSpeedStrain, SPEED_EXPONENT);
 
                 return new OsuTouchSequenceCandidate(
                     newLeft, newRight, action, aimingHand,
                     nextHandSeparationAngle, nextAccumulatedWinding,
-                    newAimStrain, newSpeedStrain, newApproximateStarRating,
-                    new SequenceNode(touchData, pathTail));
+                    newAimStrain, newSpeedStrain, newAimPowerSum, newSpeedPowerSum,
+                    this, touchData);
+            }
+
+            /// <summary>
+            /// Returns the candidates in this sequence in chronological order.
+            /// </summary>
+            public List<OsuTouchSequenceCandidate> GetHistory()
+            {
+                var list = new List<OsuTouchSequenceCandidate>();
+                for (var candidate = this; candidate.previous != null; candidate = candidate.previous)
+                    list.Add(candidate);
+                list.Reverse();
+                return list;
             }
 
             /// <summary>
@@ -230,8 +415,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
             public List<OsuDifficultyHitObjectTouchData> GetTouchDataList()
             {
                 var list = new List<OsuDifficultyHitObjectTouchData>();
-                for (SequenceNode? node = pathTail; node != null; node = node.Previous)
-                    list.Add(node.TouchData);
+                for (var candidate = this; candidate.previous != null; candidate = candidate.previous)
+                    list.Add(candidate.lastTouchData);
                 list.Reverse();
                 return list;
             }
@@ -253,11 +438,18 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
             {
                 if (handHistory.LastHit == null) return null;
 
-                // Aim/speed evaluators need up to 2 previous per-hand objects for angle and velocity change calculations.
-                var previousObjects = new List<DifficultyHitObject>(2);
-                var lastLastPerHandDifficultyHitObject = (OsuDifficultyHitObject?)handHistory.LastPerHandDifficultyHitObject?.Previous(0);
-                if (lastLastPerHandDifficultyHitObject != null) previousObjects.Add(lastLastPerHandDifficultyHitObject);
-                if (handHistory.LastPerHandDifficultyHitObject != null) previousObjects.Add(handHistory.LastPerHandDifficultyHitObject);
+                var previousObjects = new List<DifficultyHitObject>(max_per_hand_history);
+                var lastPerHandDifficultyHitObject = handHistory.LastPerHandDifficultyHitObject;
+
+                if (lastPerHandDifficultyHitObject != null)
+                {
+                    // Only keep the most recent per-hand objects.
+                    for (int i = Math.Min(lastPerHandDifficultyHitObject.Index, max_per_hand_history - 1) - 1; i >= 0; i--)
+                        previousObjects.Add(lastPerHandDifficultyHitObject.Previous(i));
+
+                    previousObjects.Add(lastPerHandDifficultyHitObject);
+                }
+
                 return new OsuDifficultyHitObject(current.BaseObject, handHistory.LastHit, current.ClockRate, previousObjects, previousObjects.Count);
             }
 
@@ -277,7 +469,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 // Obstruction should consider two factors:
                 // 1. How much the other hand is in the way of the path of the current hand
                 // 2. How much the other arm has tangled around the current arm
-                double crossing = computePathCrossing(handPos, otherPos, targetPos);
+                double scalingFactor = OsuDifficultyHitObject.NORMALISED_RADIUS / ((OsuHitObject)target.BaseObject).Radius;
+                double crossing = computePathCrossing(handPos, otherPos, targetPos, scalingFactor);
                 double tanglingRisk = computeArmTangling(accumulatedWinding, separationAngleDelta);
 
                 const double tangling_weight = 0.6;
@@ -287,7 +480,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
             /// <summary>
             /// Returns how much the other hand lies directly in the path to the target, as a value in [0, 1].
             /// </summary>
-            private static double computePathCrossing(Vector2 handPos, Vector2 otherPos, Vector2 targetPos)
+            private static double computePathCrossing(Vector2 handPos, Vector2 otherPos, Vector2 targetPos, double scalingFactor)
             {
                 Vector2 movement = targetPos - handPos;
                 float movementLengthSq = movement.LengthSquared;
@@ -297,9 +490,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
 
                 float t = Math.Clamp(Vector2.Dot(otherPos - handPos, movement) / movementLengthSq, 0f, 1f);
                 Vector2 closestOnSegment = handPos + t * movement;
-                float distance = (otherPos - closestOnSegment).Length;
+                double distance = (otherPos - closestOnSegment).Length * scalingFactor;
 
-                const double proximity_sigma = 100;
+                // Roughly 100px at CS4, since the distance is scaled by circle size.
+                const double proximity_sigma = 135;
                 double proximity = Math.Exp(-distance * distance / (2.0 * proximity_sigma * proximity_sigma));
                 double betweenness = 4.0 * t * (1.0 - t);
                 return proximity * betweenness;
@@ -352,19 +546,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
             /// <summary>
             /// Returns the end cursor position of the last note hit on this hand.
             /// </summary>
-            public Vector2 GetLastCursorPosition() => LastPerHandDifficultyHitObject?.GetEndCursorPosition() ?? LastHit!.StackedPosition;
-        }
-
-        private sealed class SequenceNode
-        {
-            public readonly OsuDifficultyHitObjectTouchData TouchData;
-            public readonly SequenceNode? Previous;
-
-            public SequenceNode(OsuDifficultyHitObjectTouchData touchData, SequenceNode? previous)
-            {
-                TouchData = touchData;
-                Previous = previous;
-            }
+            public Vector2 GetLastCursorPosition() => LastPerHandDifficultyHitObject?.LazyEndPosition ?? LastHit!.StackedPosition;
         }
     }
 }

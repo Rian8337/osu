@@ -32,8 +32,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
 
             bool isHandSwitch = touchData.AimingHand != touchData.PrevAimingHand;
 
-            bool isSingletapped = touchData.Action is not OsuTouchAction.OsuDragAction
-                                  && touchData.PrevAction is not OsuTouchAction.OsuDragAction
+            bool isSingletapped = touchData.PrevAction is not OsuTouchAction.OsuDragAction
                                   && touchData.AimingHand == touchData.PrevAimingHand;
 
             // During a drag action, the hand action assigned to an object is the hand used to aim that object.
@@ -41,8 +40,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
             // If the current object is not dragged, and the hand used to tap the current object is the same as the previous object's drag tapping hand,
             // the per-hand object's strain time does not reflect this.
             // Thus, we should calculate the strain of this object using the beatmap object instead of the per hand object.
-            bool calculateStrainWithOriginalObject = touchData.Action is not OsuTouchAction.OsuDragAction
-                                                     && touchData.PrevAction is OsuTouchAction.OsuDragAction
+            bool calculateStrainWithOriginalObject = touchData.PrevAction is OsuTouchAction.OsuDragAction
                                                      && touchData.AimingHand != touchData.PrevAimingHand;
 
             OsuDifficultyHitObject evaluationObject = calculateStrainWithOriginalObject ? osuCurrent : touchData.PerHandObject;

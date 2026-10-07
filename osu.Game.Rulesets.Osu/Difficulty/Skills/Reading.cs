@@ -62,9 +62,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         {
             double difficulty = ReadingEvaluator.EvaluateDifficultyOf(current, hasHiddenMod);
 
-            if (Mods.Any(m => m is OsuModTouchDevice))
-                difficulty = DiffUtils.Pow(difficulty, 0.89);
-
             if (Mods.Any(m => m is OsuModMagnetised))
             {
                 float magnetisedStrength = Mods.OfType<OsuModMagnetised>().First().AttractionStrength.Value;

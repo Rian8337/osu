@@ -60,7 +60,16 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
 
                 // We want to nerf objects that can be easily seen within the Flashlight circle radius.
                 if (i == 0)
+                {
                     smallDistNerf = Math.Min(1.0, jumpDistance / 75.0);
+
+                    // With touch device, also nerf objects that are close to the hand hitting them since they can be hit without being seen.
+                    if (osuCurrent.TouchData?.PerHandObject != null)
+                    {
+                        var lastHandHitObject = (OsuHitObject)osuCurrent.TouchData.Value.PerHandObject.LastObject;
+                        smallDistNerf = Math.Min(smallDistNerf, (osuHitObject.StackedPosition - lastHandHitObject.StackedEndPosition).Length / 75.0);
+                    }
+                }
 
                 // We also want to nerf stacks so that only the first object of the stack is accounted for.
                 double stackNerf = Math.Min(1.0, (currentObj.LazyJumpDistance / scalingFactor) / 25.0);
